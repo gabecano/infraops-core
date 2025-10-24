@@ -1,0 +1,52 @@
+[tool.poetry]
+name = "infraops-core"
+version = "0.1.0"
+description = "Shared infrastructure operations utilities and API clients"
+authors = ["InfraOps Team <infra@example.com>"]
+readme = "README.md"
+packages = [{ include = "infraops_core" }]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+httpx = "^0.27.0"
+tenacity = "^8.2.3"
+pydantic = "^2.7.1"
+typer = { version = "^0.12.3", extras = ["all"] }
+python-dotenv = "^1.0.1"
+structlog = "^24.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+ruff = "^0.4.3"
+mypy = "^1.10.0"
+
+[tool.ruff]
+line-length = 100
+src = ["infraops_core", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "W", "UP", "N", "S", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers"
+filterwarnings = ["error"]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true
+strict_optional = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unreachable = true
+packages = ["infraops_core"]
