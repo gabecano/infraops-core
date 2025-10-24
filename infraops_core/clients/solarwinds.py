@@ -21,12 +21,8 @@ class SolarWindsClient(ChangeSource):
 
     def list_changes(
         self, **filters: Any
-    ) -> Iterable[ChangeEvent]:  # pragma: no cover - HTTP integration
-        request = self._client.build_request("GET", "/changes", params=filters)
-        self._auth.apply(request)
-        response = self._client.send(request)
-        response.raise_for_status()
-        return []
+    ) -> Iterable[ChangeEvent]:  # pragma: no cover - roadmap placeholder
+        raise NotImplementedError("SolarWinds change ingestion is not implemented yet")
 
 
 __all__ = ["SolarWindsClient"]

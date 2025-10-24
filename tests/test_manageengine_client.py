@@ -4,6 +4,8 @@ from datetime import datetime
 
 import httpx
 import pytest
+import respx
+from httpx import Response
 from infraops_core.clients.manageengine import ManageEngineClient
 
 
@@ -14,9 +16,11 @@ def clear_settings_cache() -> None:
     get_settings.cache_clear()  # type: ignore[attr-defined]
 
 
-def test_list_changes_paginates() -> None:
-    pages = {
-        0: {
+@respx.mock
+def test_list_changes_paginates(respx_mock: respx.Router) -> None:
+    base_url = "https://example.com"
+    responses = {
+        "0": {
             "total_count": 2,
             "changes": [
                 {
@@ -45,7 +49,7 @@ def test_list_changes_paginates() -> None:
                 }
             ],
         },
-        1: {
+        "1": {
             "total_count": 2,
             "changes": [
                 {
@@ -64,20 +68,16 @@ def test_list_changes_paginates() -> None:
         },
     }
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        start_index = int(request.url.params.get("start_index", "0"))
-        page = pages[start_index // 1]
-        return httpx.Response(200, json=page)
+    def handler(request: httpx.Request) -> Response:
+        start_index = request.url.params.get("start_index", "0")
+        payload = responses[start_index]
+        return Response(200, json=payload)
 
-    transport = httpx.MockTransport(handler)
-    client = httpx.Client(
-        base_url="https://example.com", transport=transport, headers={"TECHNICIAN_KEY": "token"}
-    )
+    respx_mock.get(f"{base_url}/api/v3/changes").mock(side_effect=handler)
 
     manageengine = ManageEngineClient(
-        base_url="https://example.com",
+        base_url=base_url,
         api_key="token",
-        client=client,
         page_size=1,
     )
 
@@ -88,32 +88,26 @@ def test_list_changes_paginates() -> None:
     assert events[0].id == "1001"
     assert events[0].approvals[0].approver == "bob"
     assert events[1].implemented_at is None
+    assert events[0].raw["subject"] == "Network change"
 
 
-def test_list_changes_applies_filters(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured_params: dict[str, str] = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal captured_params
-        captured_params = dict(request.url.params)
-        return httpx.Response(
+@respx.mock
+def test_list_changes_applies_filters(respx_mock: respx.Router) -> None:
+    base_url = "https://example.com"
+    route = respx_mock.get(f"{base_url}/api/v3/changes").mock(
+        return_value=Response(
             200,
             json={
                 "total_count": 0,
                 "changes": [],
             },
         )
-
-    transport = httpx.MockTransport(handler)
-    client = httpx.Client(
-        base_url="https://example.com", transport=transport, headers={"TECHNICIAN_KEY": "token"}
     )
 
     manageengine = ManageEngineClient(
-        base_url="https://example.com",
+        base_url=base_url,
         api_key="token",
-        client=client,
-        page_size=1,
+        page_size=100,
     )
 
     list(
@@ -127,7 +121,9 @@ def test_list_changes_applies_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     manageengine.close()
 
-    assert captured_params["status"] == "closed"
-    assert captured_params["requester.name"] == "dan"
-    assert captured_params["service.name"] == "Network"
-    assert int(captured_params["created_time_after"]) < int(captured_params["created_time_before"])
+    assert route.called
+    params = route.calls.last.request.url.params  # type: ignore[union-attr]
+    assert params["status"] == "closed"
+    assert params["requester.name"] == "dan"
+    assert params["service.name"] == "Network"
+    assert int(params["created_time_after"]) < int(params["created_time_before"])

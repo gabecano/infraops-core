@@ -1,27 +1,93 @@
 # infraops-core
 
-Reusable infrastructure operations library housing shared authentication helpers, HTTP utilities,
-API clients, canonical models, ETL primitives, and LLM preparation helpers used across the
-`meraki-backup` and `auditing` applications.
+Shared infrastructure operations toolkit with reusable API clients, canonical models, I/O helpers,
+and LLM preparation utilities for downstream services such as **auditing** and **meraki-backup**.
 
-## Features
-
-* Typed configuration with environment and `.env` support
-* HTTP clients with retry/backoff helpers powered by Tenacity and httpx
-* ManageEngine client producing canonical `ChangeEvent` models
-* Stubs for Meraki, SolarWinds, Veeam, and DNS change sources for future build out
-* ETL pipeline primitives and IO helpers (JSONL writer)
-* LLM preparation utilities covering redaction, chunking, and prompt templates
-
-## Getting started
+## Quickstart
 
 ```bash
 poetry install
+poetry run pre-commit install
 poetry run pytest
 ```
 
-## Releasing
+## Installation
 
-1. Update the version in `pyproject.toml`
-2. Run tests and quality checks: `poetry run ruff check && poetry run pytest`
-3. Create a SemVer tag and push to trigger the publish workflow
+The package is published to the GitHub Packages index. Configure Poetry to use the repository and
+install a tagged release:
+
+```bash
+poetry config repositories.infraops-core "https://maven.pkg.github.com/<org>/infraops-core"
+poetry config http-basic.infraops-core "<github-username>" "<github-token>"
+poetry add infraops-core@<tag>
+```
+
+Consumers such as the **auditing** application should pin to a released tag and reuse the shared
+clients/models rather than duplicating logic. The **meraki-backup** service can depend on the same
+package today for shared utilities.
+
+## Environment variables
+
+| Variable | Description |
+| --- | --- |
+| `ME_BASE_URL` | Base URL for the ManageEngine ServiceDesk Plus instance. |
+| `ME_API_KEY` | API key used for authentication. |
+| `INFRAOPS_DEFAULT_TIMEOUT` | Optional override for default HTTP timeout (seconds). |
+| `INFRAOPS_MAX_RETRY_ATTEMPTS` | Optional override for HTTP retry attempts. |
+
+Copy `.env.example` and fill in the required ManageEngine settings:
+
+```bash
+cp .env.example .env
+```
+
+## CLI usage
+
+Export ManageEngine changes to JSONL that is safe for LLM ingestion:
+
+```bash
+poetry run python -m infraops_core.cli.export_manageengine_llm export \
+  --status implemented \
+  --from 2024-05-01T00:00:00 \
+  --to 2024-05-07T23:59:59 \
+  --out ./changes.jsonl
+```
+
+The command reads `ME_BASE_URL` and `ME_API_KEY` from the environment, fetches change events via the
+ManageEngine client, performs deterministic redaction of emails, IPs, and tokens, and persists the
+results as newline-delimited JSON.
+
+## JSONL schema
+
+Each exported record follows the canonical `ChangeEvent` model:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | `str` | Provider identifier. |
+| `submitted_at` | `datetime` | Creation timestamp in ISO 8601 format. |
+| `implemented_at` | `datetime\|None` | Implementation timestamp, if available. |
+| `service` | `str` | Service or system impacted by the change. |
+| `requester` | `str` | Requester or owner of the change. |
+| `risk` | `str\|None` | Provider risk classification. |
+| `summary` | `str` | Short summary text (redacted). |
+| `description` | `str` | Long-form description (redacted). |
+| `approvals` | `list[Approval]` | Approval metadata with approver names redacted. |
+| `diffs` | `list[ConfigDiff]` | Configuration deltas when provided. |
+| `raw` | `dict[str, Any]` | Original provider payload for debugging. |
+
+A richer example is available in `examples/export_me_llm.py` for programmatic use.
+
+## Development
+
+* Format and lint with `poetry run ruff format` and `poetry run ruff check`.
+* Run mypy: `poetry run mypy`.
+* Execute tests: `poetry run pytest`.
+* Pre-commit hooks (ruff, mypy, pytest) enforce the same checks locally.
+
+CI enforces formatting, linting, typing, and tests on every pull request via GitHub Actions.
+
+## Roadmap
+
+* Build first-class clients for Meraki, SolarWinds, Veeam, and DNS providers.
+* Expand LLM preparation utilities with summarisation prompts and embeddings helpers.
+* Provide shared ETL pipelines for additional infrastructure systems.
