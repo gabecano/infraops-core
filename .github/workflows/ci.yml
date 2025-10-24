@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: 1.8.2
+      - name: Install dependencies
+        run: poetry install
+      - name: Lint
+        run: poetry run ruff check
+      - name: Format check
+        run: poetry run ruff format --check
+      - name: Type check
+        run: poetry run mypy
+      - name: Test
+        run: poetry run pytest
+
+  publish:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: 1.8.2
+      - name: Configure Poetry
+        run: |
+          poetry config repositories.github "https://maven.pkg.github.com/${{ github.repository }}"
+          poetry config http-basic.github "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}"
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Build package
+        run: poetry build
+      - name: Publish package
+        run: poetry publish -r github
