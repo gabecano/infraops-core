@@ -102,9 +102,8 @@ def test_list_changes_applies_filters(respx_mock: respx.Router) -> None:
     assert params["requester.name"] == "dan"
     assert params["service.name"] == "Network"
     assert int(params["created_time_after"]) < int(params["created_time_before"])
-    list_info = json.loads(params["list_info"])
-    assert list_info["row_count"] == 100
-    assert list_info["start_index"] == 1
+    assert params["list_info[row_count]"] == "100"
+    assert params["list_info[start_index]"] == "0"
 
 
 @respx.mock
@@ -134,6 +133,25 @@ def test_fetch_page_raises_auth_error_on_login_body(respx_mock: respx.Router) ->
             200,
             text="<html><title>Login</title></html>",
             headers={"Content-Type": "application/json"},
+        )
+    )
+
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
+
+    with pytest.raises(AuthError):
+        list(manageengine.list_changes())
+
+    manageengine.close()
+
+
+@respx.mock
+def test_fetch_page_raises_auth_error_on_non_json(respx_mock: respx.Router) -> None:
+    base_url = "https://example.com"
+    respx_mock.get(f"{base_url}/api/v3/changes").mock(
+        return_value=Response(
+            200,
+            text="Invalid token",
+            headers={"Content-Type": "text/plain"},
         )
     )
 

@@ -40,6 +40,9 @@ addopts = "-ra --strict-markers"
 filterwarnings = ["error"]
 testpaths = ["tests"]
 
+[tool.poetry.scripts]
+export-manageengine-llm = "infraops_core.cli.export_manageengine_llm:app"
+
 [build-system]
 requires = ["poetry-core>=1.8.0"]
 build-backend = "poetry.core.masonry.api"

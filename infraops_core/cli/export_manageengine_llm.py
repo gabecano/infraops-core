@@ -70,6 +70,16 @@ OutOption = Annotated[
     Path | None,
     typer.Option("--out", help="Path to write JSONL output.", dir_okay=False, writable=True),
 ]
+PageSizeOption = Annotated[
+    int,
+    typer.Option(
+        "--page-size",
+        min=1,
+        help="Number of records to request per page from ManageEngine.",
+        show_default=True,
+        default=100,
+    ),
+]
 
 
 @app.command("export")
@@ -79,6 +89,7 @@ def export_manageengine_llm(
     from_: FromOption = None,
     to: ToOption = None,
     out: OutOption = None,
+    page_size: PageSizeOption = 100,
 ) -> None:
     """Stream ManageEngine change events to a JSONL file ready for LLM ingestion."""
 
@@ -99,7 +110,7 @@ def export_manageengine_llm(
     if out is None:
         raise typer.BadParameter("--out must be provided")
 
-    with ManageEngineClient(base_url=base_url, api_key=api_key) as client:
+    with ManageEngineClient(base_url=base_url, api_key=api_key, page_size=page_size) as client:
         events = client.list_changes(status=status, start=start, end=end)
         write_jsonl(_iter_redacted_rows(events), out)
 

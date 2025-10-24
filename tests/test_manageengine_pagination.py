@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime
 
 import pytest
@@ -21,9 +20,9 @@ def test_pagination_advances_start_index(respx_mock: respx.Router) -> None:
     base_url = "https://example.com"
 
     def handler(request):
-        list_info = json.loads(request.url.params["list_info"])
-        start_index = str(list_info["start_index"])
-        if start_index == "1":
+        params = request.url.params
+        start_index = params["list_info[start_index]"]
+        if start_index == "0":
             timestamp = datetime.now().replace(microsecond=0).isoformat()
             return Response(
                 200,
@@ -49,7 +48,7 @@ def test_pagination_advances_start_index(respx_mock: respx.Router) -> None:
                     ],
                 },
             )
-        assert start_index == "3"
+        assert start_index == "2"
         timestamp = datetime.now().replace(microsecond=0).isoformat()
         return Response(
             200,
