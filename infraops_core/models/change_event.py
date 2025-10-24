@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime
-from typing import Any, Iterator, Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -58,4 +59,4 @@ class ChangeEventTransformer(Protocol):
     def __call__(self, payload: dict[str, object]) -> ChangeEvent: ...
 
 
-__all__ = ["Approval", "ConfigDiff", "ChangeEvent", "ChangeEventTransformer"]
+__all__ = ["Approval", "ChangeEvent", "ChangeEventTransformer", "ConfigDiff"]

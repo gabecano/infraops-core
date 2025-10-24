@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterator
+from collections.abc import Iterator
 
 
 def chunk_text(text: str, *, size: int, overlap: int = 0) -> Iterator[str]:

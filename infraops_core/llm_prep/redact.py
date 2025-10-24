@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 REDACTION_TOKEN = "[REDACTED]"  # noqa: S105 - constant redaction marker
 
@@ -47,4 +47,4 @@ def redact(
     return result
 
 
-__all__ = ["redact", "REDACTION_TOKEN"]
+__all__ = ["REDACTION_TOKEN", "redact"]

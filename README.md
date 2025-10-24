@@ -41,6 +41,16 @@ Copy `.env.example` and fill in the required ManageEngine settings:
 cp .env.example .env
 ```
 
+## On-Prem vs Cloud
+
+| Aspect | On-Prem | Cloud |
+| --- | --- | --- |
+| Auth header | `authtoken: <ME_API_KEY>` | `Authorization: Zoho-oauthtoken <token>` |
+| Base URL | `http(s)://host[:port]/api/v3` (portal optional) | `https://<region>.manageengine.com/app/<portal>/api/v3` |
+| Accept header | `application/vnd.manageengine.sdp.v3+json` | `application/vnd.manageengine.sdp.v3+json` |
+
+See the ManageEngine v3 change API documentation for [on-premises deployments](https://www.manageengine.com/products/service-desk/help/adminguide/apis/v3/change-api.html) and [cloud deployments](https://www.manageengine.com/products/service-desk/help/rest-api/change-api.html) for more details.
+
 ## CLI usage
 
 Export ManageEngine changes to JSONL that is safe for LLM ingestion:

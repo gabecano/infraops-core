@@ -11,4 +11,4 @@ CHANGE_SUMMARY_TEMPLATE = PromptTemplate(
     ),
 )
 
-__all__ = ["PromptTemplate", "CHANGE_SUMMARY_TEMPLATE"]
+__all__ = ["CHANGE_SUMMARY_TEMPLATE", "PromptTemplate"]

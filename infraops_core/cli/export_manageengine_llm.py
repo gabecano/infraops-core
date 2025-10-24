@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable, Iterator
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Iterable, Iterator
+from typing import Annotated
 
 import typer
 
@@ -43,8 +44,25 @@ def _iter_redacted_rows(events: Iterable[ChangeEvent]) -> Iterator[dict[str, obj
         yield record
 
 
+ALLOWED_STATUSES = {"implemented", "approved"}
+
+
+def _validate_status(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalised = value.lower()
+    if normalised not in ALLOWED_STATUSES:
+        allowed = ", ".join(sorted(ALLOWED_STATUSES))
+        raise typer.BadParameter(f"Status must be one of: {allowed}")
+    return normalised
+
+
 StatusOption = Annotated[
-    str | None, typer.Option(help="Restrict to changes with the given status.")
+    str | None,
+    typer.Option(
+        help="Restrict to changes with the given status.",
+        callback=_validate_status,
+    ),
 ]
 FromOption = Annotated[str | None, typer.Option("--from", help="ISO-8601 start timestamp.")]
 ToOption = Annotated[str | None, typer.Option("--to", help="ISO-8601 end timestamp.")]
