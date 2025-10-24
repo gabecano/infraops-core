@@ -14,8 +14,8 @@ class DNSClient(ChangeSource):
 
     def list_changes(
         self, **filters: Any
-    ) -> Iterable[ChangeEvent]:  # pragma: no cover - interface stub
-        return []
+    ) -> Iterable[ChangeEvent]:  # pragma: no cover - roadmap placeholder
+        raise NotImplementedError("DNS change ingestion is not implemented yet")
 
 
 __all__ = ["DNSClient"]

@@ -21,12 +21,8 @@ class VeeamClient(ChangeSource):
 
     def list_changes(
         self, **filters: Any
-    ) -> Iterable[ChangeEvent]:  # pragma: no cover - HTTP integration
-        request = self._client.build_request("GET", "/events", params=filters)
-        self._auth.apply(request)
-        response = self._client.send(request)
-        response.raise_for_status()
-        return []
+    ) -> Iterable[ChangeEvent]:  # pragma: no cover - roadmap placeholder
+        raise NotImplementedError("Veeam change ingestion is not implemented yet")
 
 
 __all__ = ["VeeamClient"]

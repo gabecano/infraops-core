@@ -159,6 +159,9 @@ class ManageEngineClient(ChangeSource):
 
     def _transform_payload(self, payload: dict[str, Any]) -> Iterator[ChangeEvent]:
         for raw in payload.get("changes", []) or []:
+            if not isinstance(raw, dict):  # pragma: no cover - defensive guard
+                _LOGGER.warning("Skipping non-dict ManageEngine change payload", raw=raw)
+                continue
             try:
                 yield self._to_change_event(raw)
             except Exception as exc:  # pragma: no cover - defensive logging
@@ -186,6 +189,8 @@ class ManageEngineClient(ChangeSource):
         if submitted_at is None:
             raise ValueError("Change missing creation time")
 
+        raw_payload = cast(dict[str, Any], raw)
+
         return ChangeEvent(
             id=str(raw.get("id")),
             submitted_at=submitted_at,
@@ -197,6 +202,7 @@ class ManageEngineClient(ChangeSource):
             description=raw.get("description", ""),
             approvals=approvals,
             diffs=diffs,
+            raw=raw_payload,
         )
 
 

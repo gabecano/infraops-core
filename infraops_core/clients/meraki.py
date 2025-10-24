@@ -21,13 +21,8 @@ class MerakiClient(ChangeSource):
 
     def list_changes(
         self, **filters: Any
-    ) -> Iterable[ChangeEvent]:  # pragma: no cover - HTTP integration
-        request = self._client.build_request("GET", "/networks", params=filters)
-        self._auth.apply(request)
-        response = self._client.send(request)
-        response.raise_for_status()
-        # Placeholder: adapt raw Meraki events to ChangeEvent in future iterations.
-        return []
+    ) -> Iterable[ChangeEvent]:  # pragma: no cover - roadmap placeholder
+        raise NotImplementedError("Meraki change ingestion is not implemented yet")
 
 
 __all__ = ["MerakiClient"]

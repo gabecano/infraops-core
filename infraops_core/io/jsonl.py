@@ -20,7 +20,7 @@ def write_jsonl(rows: Iterable[dict[str, object]], path: str | Path | TextIO) ->
 
     handle: TextIO = path
     for row in rows:
-        handle.write(json.dumps(row) + "\n")
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
     handle.flush()
 
 
