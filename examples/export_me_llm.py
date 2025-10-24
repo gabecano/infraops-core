@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Iterable
 
 from infraops_core.clients.manageengine import ManageEngineClient
 from infraops_core.io.jsonl import write_jsonl

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from urllib.parse import parse_qs
 
-import httpx
 import pytest
 import respx
 from httpx import Response
-from infraops_core.clients.manageengine import ManageEngineClient
+from infraops_core.clients.manageengine import AuthError, ManageEngineClient
 
 
 @pytest.fixture(autouse=True)
@@ -17,78 +18,51 @@ def clear_settings_cache() -> None:
 
 
 @respx.mock
-def test_list_changes_paginates(respx_mock: respx.Router) -> None:
+def test_list_changes_maps_fields(respx_mock: respx.Router) -> None:
     base_url = "https://example.com"
-    responses = {
-        "0": {
-            "total_count": 2,
-            "changes": [
-                {
-                    "id": "1001",
-                    "created_time": "2024-04-02T12:00:00",
-                    "implemented_time": "2024-04-02T13:00:00",
-                    "service": {"name": "Network"},
-                    "requester": {"name": "alice"},
-                    "risk_level": "low",
-                    "subject": "Network change",
-                    "description": "Added VLAN",
-                    "approvals": [
-                        {
-                            "approver": {"name": "bob"},
-                            "status": "approved",
-                            "approval_time": "2024-04-02T12:30:00",
-                        }
-                    ],
-                    "changes": [
-                        {
-                            "field": "vlan",
-                            "old_value": "10",
-                            "new_value": "20",
-                        }
-                    ],
-                }
-            ],
-        },
-        "1": {
-            "total_count": 2,
-            "changes": [
-                {
-                    "id": "1002",
-                    "created_time": "2024-04-03T10:00:00",
-                    "implemented_time": None,
-                    "service": {"name": "Compute"},
-                    "requester": {"name": "carol"},
-                    "risk_level": None,
-                    "subject": "Server patch",
-                    "description": "Patched OS",
-                    "approvals": [],
-                    "changes": [],
-                }
-            ],
-        },
+    payload = {
+        "list_info": {"row_count": 1, "has_more_rows": False, "start_index": 1},
+        "changes": [
+            {
+                "id": "1001",
+                "title": {"display_value": "Network change"},
+                "description": {"display_value": "Added VLAN"},
+                "created_time": "2024-04-02T12:00:00",
+                "implemented_time": {"display_value": "2024-04-02T13:00:00"},
+                "service": {"name": {"display_value": "Network"}},
+                "requester": {"name": "alice"},
+                "risk": {"name": "Low"},
+                "approvals": [
+                    {
+                        "approver": {"name": {"display_value": "bob"}},
+                        "status": {"display_value": "approved"},
+                        "responded_time": "2024-04-02T12:30:00",
+                    }
+                ],
+                "changes": [],
+            }
+        ],
     }
 
-    def handler(request: httpx.Request) -> Response:
-        start_index = request.url.params.get("start_index", "0")
-        payload = responses[start_index]
-        return Response(200, json=payload)
+    respx_mock.get(f"{base_url}/api/v3/changes").mock(return_value=Response(200, json=payload))
 
-    respx_mock.get(f"{base_url}/api/v3/changes").mock(side_effect=handler)
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
 
-    manageengine = ManageEngineClient(
-        base_url=base_url,
-        api_key="token",
-        page_size=1,
-    )
-
-    events = list(manageengine.list_changes(status="approved"))
+    events = list(manageengine.list_changes())
     manageengine.close()
 
-    assert len(events) == 2
-    assert events[0].id == "1001"
-    assert events[0].approvals[0].approver == "bob"
-    assert events[1].implemented_at is None
-    assert events[0].raw["subject"] == "Network change"
+    assert len(events) == 1
+    event = events[0]
+    assert event.id == "1001"
+    assert event.summary == "Network change"
+    assert event.description == "Added VLAN"
+    assert event.service == "Network"
+    assert event.risk == "Low"
+    assert event.requester == "alice"
+    assert event.approvals[0].approver == "bob"
+    assert event.approvals[0].status == "approved"
+    assert event.approvals[0].responded_at is not None
+    assert event.raw["title"]["display_value"] == "Network change"
 
 
 @respx.mock
@@ -98,7 +72,7 @@ def test_list_changes_applies_filters(respx_mock: respx.Router) -> None:
         return_value=Response(
             200,
             json={
-                "total_count": 0,
+                "list_info": {"row_count": 0, "has_more_rows": False, "start_index": 1},
                 "changes": [],
             },
         )
@@ -122,8 +96,72 @@ def test_list_changes_applies_filters(respx_mock: respx.Router) -> None:
     manageengine.close()
 
     assert route.called
-    params = route.calls.last.request.url.params  # type: ignore[union-attr]
+    request = route.calls.last.request  # type: ignore[union-attr]
+    params = request.url.params
     assert params["status"] == "closed"
     assert params["requester.name"] == "dan"
     assert params["service.name"] == "Network"
     assert int(params["created_time_after"]) < int(params["created_time_before"])
+    list_info = json.loads(params["list_info"])
+    assert list_info["row_count"] == 100
+    assert list_info["start_index"] == 1
+
+
+@respx.mock
+def test_fetch_page_raises_auth_error_on_html(respx_mock: respx.Router) -> None:
+    base_url = "https://example.com"
+    respx_mock.get(f"{base_url}/api/v3/changes").mock(
+        return_value=Response(
+            200,
+            text="<html><body>Login required</body></html>",
+            headers={"Content-Type": "text/html"},
+        )
+    )
+
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
+
+    with pytest.raises(AuthError):
+        list(manageengine.list_changes())
+
+    manageengine.close()
+
+
+@respx.mock
+def test_fetch_page_raises_auth_error_on_login_body(respx_mock: respx.Router) -> None:
+    base_url = "https://example.com"
+    respx_mock.get(f"{base_url}/api/v3/changes").mock(
+        return_value=Response(
+            200,
+            text="<html><title>Login</title></html>",
+            headers={"Content-Type": "application/json"},
+        )
+    )
+
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
+
+    with pytest.raises(AuthError):
+        list(manageengine.list_changes())
+
+    manageengine.close()
+
+
+@respx.mock
+def test_post_wraps_payload(respx_mock: respx.Router) -> None:
+    base_url = "https://example.com"
+    route = respx_mock.post(f"{base_url}/api/v3/custom").mock(
+        return_value=Response(201, json={"status": "ok"})
+    )
+
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
+
+    response = manageengine._post("custom", {"foo": "bar"})
+    manageengine.close()
+
+    assert response.status_code == 201
+    request = route.calls.last.request  # type: ignore[union-attr]
+    assert request.headers["Content-Type"] == "application/x-www-form-urlencoded"
+    assert request.headers["Accept"] == "application/vnd.manageengine.sdp.v3+json"
+    decoded = parse_qs(request.content.decode())
+    assert "input_data" in decoded
+    payload = json.loads(decoded["input_data"][0])
+    assert payload == {"foo": "bar"}

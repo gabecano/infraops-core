@@ -48,4 +48,4 @@ def clear_context() -> None:
     structlog.contextvars.clear_contextvars()
 
 
-__all__ = ["configure_logging", "get_logger", "bind_context", "clear_context"]
+__all__ = ["bind_context", "clear_context", "configure_logging", "get_logger"]

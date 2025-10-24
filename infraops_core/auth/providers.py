@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 import httpx
 
@@ -38,4 +39,4 @@ class AuthenticatedClient(httpx.Client):
         super().__init__(headers=headers, **kwargs)
 
 
-__all__ = ["APIKeyAuth", "OAuthToken", "AuthenticatedClient"]
+__all__ = ["APIKeyAuth", "AuthenticatedClient", "OAuthToken"]

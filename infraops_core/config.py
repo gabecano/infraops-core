@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from functools import lru_cache
-from typing import Any, Mapping
+from typing import Any
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
@@ -53,9 +54,13 @@ class Settings(BaseModel):
         data: dict[str, Any] = {}
         source = env or os.environ
 
-        if "MANAGEENGINE_BASE_URL" in source:
+        if "ME_BASE_URL" in source:
+            data["manageengine_base_url"] = source["ME_BASE_URL"]
+        elif "MANAGEENGINE_BASE_URL" in source:
             data["manageengine_base_url"] = source["MANAGEENGINE_BASE_URL"]
-        if "MANAGEENGINE_API_KEY" in source:
+        if "ME_API_KEY" in source:
+            data["manageengine_api_key"] = source["ME_API_KEY"]
+        elif "MANAGEENGINE_API_KEY" in source:
             data["manageengine_api_key"] = source["MANAGEENGINE_API_KEY"]
         if "INFRAOPS_DEFAULT_TIMEOUT" in source:
             data["default_request_timeout"] = source["INFRAOPS_DEFAULT_TIMEOUT"]
