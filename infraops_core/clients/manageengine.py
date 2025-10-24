@@ -65,6 +65,23 @@ def _looks_like_login_page(text: str) -> bool:
     return "<html" in lowered and ("login" in lowered or "signin" in lowered)
 
 
+def _coerce_int(value: Any) -> int | None:
+    """Best-effort conversion of ManageEngine numeric fields to integers."""
+
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
 def _build_api_base(url: str) -> str:
     parsed = httpx.URL(url)
     path = parsed.path.rstrip("/")
@@ -161,22 +178,21 @@ class ManageEngineClient(ChangeSource):
                 changes = list(self._transform_payload(payload))
                 yield from changes
                 list_info = cast(dict[str, Any], payload.get("list_info", {}) or {})
-                returned_raw = list_info.get("row_count")
-                try:
-                    returned = int(returned_raw)
-                except (TypeError, ValueError):
+                returned = _coerce_int(list_info.get("row_count"))
+                if returned is None:
                     returned = len(changes)
+                has_more: bool | None
                 has_more_raw = list_info.get("has_more_rows")
                 if isinstance(has_more_raw, str):
                     has_more = has_more_raw.lower() == "true"
+                elif isinstance(has_more_raw, bool):
+                    has_more = has_more_raw
                 else:
-                    has_more = bool(has_more_raw) if has_more_raw is not None else None
+                    has_more = None
                 if not changes or returned < requested or has_more is False:
                     break
-                start_raw = list_info.get("start_index")
-                try:
-                    start = int(start_raw)
-                except (TypeError, ValueError):
+                start = _coerce_int(list_info.get("start_index"))
+                if start is None:
                     start = start_index
                 start_index = start + max(returned, len(changes))
 
