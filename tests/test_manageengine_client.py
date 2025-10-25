@@ -98,12 +98,14 @@ def test_list_changes_applies_filters(respx_mock: respx.Router) -> None:
     assert route.called
     request = route.calls.last.request  # type: ignore[union-attr]
     params = request.url.params
-    assert params["status"] == "closed"
     assert params["requester.name"] == "dan"
     assert params["service.name"] == "Network"
     assert int(params["created_time_after"]) < int(params["created_time_before"])
-    assert params["list_info[row_count]"] == "100"
-    assert params["list_info[start_index]"] == "0"
+    payload = json.loads(params["input_data"])
+    list_info = payload["list_info"]
+    assert list_info["row_count"] == 100
+    assert list_info["start_index"] == 0
+    assert list_info.get("filter_by", {}).get("status") == "closed"
 
 
 @respx.mock

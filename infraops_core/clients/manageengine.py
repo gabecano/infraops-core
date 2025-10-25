@@ -201,10 +201,20 @@ class ManageEngineClient(ChangeSource):
         self, filters: Mapping[str, object], *, page: int, page_size: int
     ) -> dict[str, Any]:
         start_index = max((page - 1) * page_size, 0)
-        params: dict[str, Any] = {
-            "list_info[row_count]": page_size,
-            "list_info[start_index]": start_index,
+
+        list_info: dict[str, Any] = {
+            "row_count": page_size,
+            "start_index": start_index,
         }
+        filter_by: dict[str, Any] = {}
+        if "status" in filters:
+            filter_by["status"] = filters["status"]
+        if filter_by:
+            list_info["filter_by"] = filter_by
+
+        payload = {"list_info": list_info}
+        params: dict[str, Any] = {"input_data": json.dumps(payload)}
+
         start_time = filters.get("start_time")
         end_time = filters.get("end_time")
         if start_time is not None:
@@ -215,8 +225,6 @@ class ManageEngineClient(ChangeSource):
             parsed = _parse_datetime(end_time)
             if parsed is not None:
                 params["created_time_before"] = int(parsed.timestamp())
-        if "status" in filters:
-            params["status"] = filters["status"]
         if "requester" in filters:
             params["requester.name"] = filters["requester"]
         if "service" in filters:
