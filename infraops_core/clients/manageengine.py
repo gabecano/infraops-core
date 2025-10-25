@@ -60,6 +60,11 @@ def _unwrap_field(value: Any) -> Any:
     return current
 
 
+def _looks_like_html_document(text: str) -> bool:
+    lowered = text.lower().lstrip()
+    return lowered.startswith("<!doctype") or lowered.startswith("<html")
+
+
 def _looks_like_login_page(text: str) -> bool:
     lowered = text.lower()
     return "<html" in lowered and ("login" in lowered or "signin" in lowered)
@@ -237,10 +242,14 @@ class ManageEngineClient(ChangeSource):
         response.raise_for_status()
         content_type = response.headers.get("Content-Type", "").lower()
         text = response.text
-        lowered_text = text.lower()
-        if "json" not in content_type or "<html" in lowered_text or _looks_like_login_page(text):
+        if ("json" not in content_type and _looks_like_html_document(text)) or _looks_like_login_page(text):
             raise AuthError("Check authtoken or base URL")
-        data = response.json()
+        try:
+            data = response.json()
+        except json.JSONDecodeError as exc:
+            if "json" not in content_type or _looks_like_html_document(text):
+                raise AuthError("Check authtoken or base URL") from exc
+            raise
         if not isinstance(data, dict):  # pragma: no cover - defensive guard
             raise ValueError("Unexpected ManageEngine response payload")
         return cast(dict[str, Any], data)
