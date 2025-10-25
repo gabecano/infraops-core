@@ -5,13 +5,19 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime
-from typing import Any, cast, overload
+from typing import Any, Callable, cast, overload
 
 import httpx
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from infraops_core.clients.base import ChangeSource
 from infraops_core.config import get_settings
-from infraops_core.http.client import create_sync_client, retryable
 from infraops_core.logging import get_logger
 from infraops_core.models.change_event import Approval, ChangeEvent, ConfigDiff
 
@@ -23,6 +29,31 @@ class AuthError(RuntimeError):
 
 
 _ACCEPT_HEADER = "application/vnd.manageengine.sdp.v3+json"
+
+
+def _log_retry(retry_state: RetryCallState) -> None:
+    logger = get_logger(__name__)
+    wait_time = retry_state.next_action.sleep if retry_state.next_action else None
+    logger.warning(
+        "Retrying HTTP request",
+        attempt=retry_state.attempt_number,
+        wait=wait_time,
+        last_exc=str(retry_state.outcome.exception() if retry_state.outcome else None),
+    )
+
+
+def _build_retry_decorator() -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    settings = get_settings()
+    return retry(
+        reraise=True,
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.TransportError)),
+        stop=stop_after_attempt(settings.max_retry_attempts),
+        wait=wait_exponential(multiplier=settings.retry_backoff_seconds, min=0),
+        after=_log_retry,
+    )
+
+
+retryable = _build_retry_decorator()
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -122,7 +153,13 @@ class ManageEngineClient(ChangeSource):
         self._page_size = page_size
         self._api_base_url = _build_api_base(self._base_url)
         headers = {"authtoken": self._api_key, "Accept": _ACCEPT_HEADER}
-        self._client = client or create_sync_client(base_url=self._api_base_url, headers=headers)
+        timeout = settings.default_request_timeout
+        self._client = client or httpx.Client(
+            base_url=self._api_base_url,
+            headers=headers,
+            timeout=timeout,
+            transport=httpx.HTTPTransport(retries=0),
+        )
 
     def close(self) -> None:
         self._client.close()
