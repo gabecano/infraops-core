@@ -4,9 +4,8 @@ import json
 from datetime import datetime
 
 import pytest
-import respx
-from httpx import Response
-from infraops_core.clients.manageengine import ManageEngineClient
+from httpx import Client, MockTransport, Request, Response
+from infraops_core.clients.manageengine import _ACCEPT_HEADER, ManageEngineClient, _build_api_base
 
 
 @pytest.fixture(autouse=True)
@@ -16,11 +15,10 @@ def clear_settings_cache() -> None:
     get_settings.cache_clear()  # type: ignore[attr-defined]
 
 
-@respx.mock
-def test_pagination_advances_start_index(respx_mock: respx.Router) -> None:
+def test_pagination_advances_start_index() -> None:
     base_url = "https://example.com"
 
-    def handler(request):
+    def handler(request: Request) -> Response:
         params = request.url.params
         payload = json.loads(params["input_data"])
         start_index = payload["list_info"]["start_index"]
@@ -69,11 +67,19 @@ def test_pagination_advances_start_index(respx_mock: respx.Router) -> None:
             },
         )
 
-    route = respx_mock.get(f"{base_url}/api/v3/changes").mock(side_effect=handler)
-
-    manageengine = ManageEngineClient(base_url=base_url, api_key="secret", page_size=2)
+    transport = MockTransport(handler)
+    manageengine = ManageEngineClient(
+        base_url=base_url,
+        api_key="secret",
+        page_size=2,
+        client=Client(
+            base_url=_build_api_base(base_url),
+            transport=transport,
+            headers={"authtoken": "secret", "Accept": _ACCEPT_HEADER},
+        ),
+    )
     events = list(manageengine.list_changes())
     manageengine.close()
 
-    assert route.call_count == 2
+    assert len(events) == 3
     assert [event.id for event in events] == ["1001", "1002", "1003"]

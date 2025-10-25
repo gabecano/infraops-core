@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import pytest
-import respx
-from httpx import Response
-from infraops_core.clients.manageengine import ManageEngineClient
+from httpx import Client, MockTransport, Request, Response
+from infraops_core.clients.manageengine import _ACCEPT_HEADER, ManageEngineClient, _build_api_base
 
 
 @pytest.fixture(autouse=True)
@@ -13,47 +12,64 @@ def clear_settings_cache() -> None:
     get_settings.cache_clear()  # type: ignore[attr-defined]
 
 
-@respx.mock
-def test_onprem_uses_authtoken_header(respx_mock: respx.Router) -> None:
-    base_url = "http://sdp.local:8080"
-    route = respx_mock.get(f"{base_url}/api/v3/changes").mock(
-        return_value=Response(200, json={"list_info": {"row_count": 0}, "changes": []})
+def _client_with_handler(base_url: str, handler: MockTransport) -> Client:
+    return Client(
+        base_url=_build_api_base(base_url),
+        transport=handler,
+        headers={"authtoken": "secret", "Accept": _ACCEPT_HEADER},
     )
 
-    manageengine = ManageEngineClient(base_url=base_url, api_key="secret", page_size=1)
+
+def test_onprem_uses_authtoken_header() -> None:
+    base_url = "http://sdp.local:8080"
+    captured: list[Request] = []
+
+    def handler(request: Request) -> Response:
+        captured.append(request)
+        return Response(200, json={"list_info": {"row_count": 0}, "changes": []})
+
+    manageengine = ManageEngineClient(
+        base_url=base_url,
+        api_key="secret",
+        page_size=1,
+        client=_client_with_handler(base_url, MockTransport(handler)),
+    )
     list(manageengine.list_changes())
     manageengine.close()
 
-    assert route.called
-    request = route.calls.last.request  # type: ignore[union-attr]
+    request = captured[-1]
     assert request.headers["authtoken"] == "secret"
     assert request.headers["Accept"] == "application/vnd.manageengine.sdp.v3+json"
     assert "Authorization" not in request.headers
 
 
-@respx.mock
-def test_portal_base_url_is_supported(respx_mock: respx.Router) -> None:
+def test_portal_base_url_is_supported() -> None:
     base_url = "https://example.com/app/portal"
-    route = respx_mock.get(f"{base_url}/api/v3/changes").mock(
-        return_value=Response(200, json={"list_info": {"row_count": 0}, "changes": []})
-    )
 
-    manageengine = ManageEngineClient(base_url=base_url, api_key="secret", page_size=1)
+    def handler(_: Request) -> Response:
+        return Response(200, json={"list_info": {"row_count": 0}, "changes": []})
+
+    manageengine = ManageEngineClient(
+        base_url=base_url,
+        api_key="secret",
+        page_size=1,
+        client=_client_with_handler(base_url, MockTransport(handler)),
+    )
     list(manageengine.list_changes())
     manageengine.close()
 
-    assert route.called
 
-
-@respx.mock
-def test_existing_api_base_is_respected(respx_mock: respx.Router) -> None:
+def test_existing_api_base_is_respected() -> None:
     base_url = "https://example.com/api/v3"
-    route = respx_mock.get(f"{base_url}/changes").mock(
-        return_value=Response(200, json={"list_info": {"row_count": 0}, "changes": []})
-    )
 
-    manageengine = ManageEngineClient(base_url=base_url, api_key="secret", page_size=1)
+    def handler(_: Request) -> Response:
+        return Response(200, json={"list_info": {"row_count": 0}, "changes": []})
+
+    manageengine = ManageEngineClient(
+        base_url=base_url,
+        api_key="secret",
+        page_size=1,
+        client=_client_with_handler(base_url, MockTransport(handler)),
+    )
     list(manageengine.list_changes())
     manageengine.close()
-
-    assert route.called

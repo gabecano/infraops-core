@@ -5,9 +5,13 @@ from datetime import datetime
 from urllib.parse import parse_qs
 
 import pytest
-import respx
-from httpx import Response
-from infraops_core.clients.manageengine import AuthError, ManageEngineClient
+from httpx import Client, MockTransport, Request, Response
+from infraops_core.clients.manageengine import (
+    _ACCEPT_HEADER,
+    AuthError,
+    ManageEngineClient,
+    _build_api_base,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -17,8 +21,17 @@ def clear_settings_cache() -> None:
     get_settings.cache_clear()  # type: ignore[attr-defined]
 
 
-@respx.mock
-def test_list_changes_maps_fields(respx_mock: respx.Router) -> None:
+def _build_mock_client(base_url: str, handler: MockTransport | None = None) -> Client:
+    api_base = _build_api_base(base_url)
+    transport = handler or MockTransport(lambda request: Response(500))
+    return Client(
+        base_url=api_base,
+        transport=transport,
+        headers={"authtoken": "token", "Accept": _ACCEPT_HEADER},
+    )
+
+
+def test_list_changes_maps_fields() -> None:
     base_url = "https://example.com"
     payload = {
         "list_info": {"row_count": 1, "has_more_rows": False, "start_index": 1},
@@ -44,9 +57,12 @@ def test_list_changes_maps_fields(respx_mock: respx.Router) -> None:
         ],
     }
 
-    respx_mock.get(f"{base_url}/api/v3/changes").mock(return_value=Response(200, json=payload))
+    def handler(request: Request) -> Response:
+        assert request.url.path.endswith("/changes")
+        return Response(200, json=payload)
 
-    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
+    client = _build_mock_client(base_url, MockTransport(handler))
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token", client=client)
 
     events = list(manageengine.list_changes())
     manageengine.close()
@@ -65,23 +81,23 @@ def test_list_changes_maps_fields(respx_mock: respx.Router) -> None:
     assert event.raw["title"]["display_value"] == "Network change"
 
 
-@respx.mock
-def test_list_changes_applies_filters(respx_mock: respx.Router) -> None:
+def test_list_changes_applies_filters() -> None:
     base_url = "https://example.com"
-    route = respx_mock.get(f"{base_url}/api/v3/changes").mock(
-        return_value=Response(
+    captured: list[Request] = []
+
+    def handler(request: Request) -> Response:
+        captured.append(request)
+        return Response(
             200,
             json={
                 "list_info": {"row_count": 0, "has_more_rows": False, "start_index": 1},
                 "changes": [],
             },
         )
-    )
 
+    client = _build_mock_client(base_url, MockTransport(handler))
     manageengine = ManageEngineClient(
-        base_url=base_url,
-        api_key="token",
-        page_size=100,
+        base_url=base_url, api_key="token", page_size=100, client=client
     )
 
     list(
@@ -95,8 +111,8 @@ def test_list_changes_applies_filters(respx_mock: respx.Router) -> None:
     )
     manageengine.close()
 
-    assert route.called
-    request = route.calls.last.request  # type: ignore[union-attr]
+    assert captured
+    request = captured[-1]
     params = request.url.params
     assert params["requester.name"] == "dan"
     assert params["service.name"] == "Network"
@@ -108,18 +124,18 @@ def test_list_changes_applies_filters(respx_mock: respx.Router) -> None:
     assert list_info.get("filter_by", {}).get("status") == "closed"
 
 
-@respx.mock
-def test_fetch_page_raises_auth_error_on_html(respx_mock: respx.Router) -> None:
+def test_fetch_page_raises_auth_error_on_html() -> None:
     base_url = "https://example.com"
-    respx_mock.get(f"{base_url}/api/v3/changes").mock(
-        return_value=Response(
+
+    def handler(_: Request) -> Response:
+        return Response(
             200,
             text="<html><body>Login required</body></html>",
             headers={"Content-Type": "text/html"},
         )
-    )
 
-    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
+    client = _build_mock_client(base_url, MockTransport(handler))
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token", client=client)
 
     with pytest.raises(AuthError):
         list(manageengine.list_changes())
@@ -127,18 +143,18 @@ def test_fetch_page_raises_auth_error_on_html(respx_mock: respx.Router) -> None:
     manageengine.close()
 
 
-@respx.mock
-def test_fetch_page_raises_auth_error_on_login_body(respx_mock: respx.Router) -> None:
+def test_fetch_page_raises_auth_error_on_login_body() -> None:
     base_url = "https://example.com"
-    respx_mock.get(f"{base_url}/api/v3/changes").mock(
-        return_value=Response(
+
+    def handler(_: Request) -> Response:
+        return Response(
             200,
             text="<html><title>Login</title></html>",
             headers={"Content-Type": "application/json"},
         )
-    )
 
-    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
+    client = _build_mock_client(base_url, MockTransport(handler))
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token", client=client)
 
     with pytest.raises(AuthError):
         list(manageengine.list_changes())
@@ -146,18 +162,18 @@ def test_fetch_page_raises_auth_error_on_login_body(respx_mock: respx.Router) ->
     manageengine.close()
 
 
-@respx.mock
-def test_fetch_page_raises_auth_error_on_non_json(respx_mock: respx.Router) -> None:
+def test_fetch_page_raises_auth_error_on_non_json() -> None:
     base_url = "https://example.com"
-    respx_mock.get(f"{base_url}/api/v3/changes").mock(
-        return_value=Response(
+
+    def handler(_: Request) -> Response:
+        return Response(
             200,
             text="Invalid token",
             headers={"Content-Type": "text/plain"},
         )
-    )
 
-    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
+    client = _build_mock_client(base_url, MockTransport(handler))
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token", client=client)
 
     with pytest.raises(AuthError):
         list(manageengine.list_changes())
@@ -165,22 +181,24 @@ def test_fetch_page_raises_auth_error_on_non_json(respx_mock: respx.Router) -> N
     manageengine.close()
 
 
-@respx.mock
-def test_post_wraps_payload(respx_mock: respx.Router) -> None:
+def test_post_wraps_payload() -> None:
     base_url = "https://example.com"
-    route = respx_mock.post(f"{base_url}/api/v3/custom").mock(
-        return_value=Response(201, json={"status": "ok"})
-    )
+    captured: list[Request] = []
 
-    manageengine = ManageEngineClient(base_url=base_url, api_key="token")
+    def handler(request: Request) -> Response:
+        captured.append(request)
+        return Response(201, json={"status": "ok"})
+
+    client = _build_mock_client(base_url, MockTransport(handler))
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token", client=client)
 
     response = manageengine._post("custom", {"foo": "bar"})
     manageengine.close()
 
     assert response.status_code == 201
-    request = route.calls.last.request  # type: ignore[union-attr]
+    request = captured[-1]
     assert request.headers["Content-Type"] == "application/x-www-form-urlencoded"
-    assert request.headers["Accept"] == "application/vnd.manageengine.sdp.v3+json"
+    assert request.headers["Accept"] == _ACCEPT_HEADER
     decoded = parse_qs(request.content.decode())
     assert "input_data" in decoded
     payload = json.loads(decoded["input_data"][0])
