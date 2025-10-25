@@ -60,6 +60,11 @@ def _unwrap_field(value: Any) -> Any:
     return current
 
 
+def _looks_like_html_document(text: str) -> bool:
+    lowered = text.lower().lstrip()
+    return lowered.startswith("<!doctype") or lowered.startswith("<html")
+
+
 def _looks_like_login_page(text: str) -> bool:
     lowered = text.lower()
     return "<html" in lowered and ("login" in lowered or "signin" in lowered)
@@ -103,7 +108,7 @@ class ManageEngineClient(ChangeSource):
         base_url: str | None = None,
         api_key: str | None = None,
         client: httpx.Client | None = None,
-        page_size: int = 200,
+        page_size: int = 100,
     ) -> None:
         settings = get_settings()
         self._base_url = base_url or (
@@ -170,40 +175,51 @@ class ManageEngineClient(ChangeSource):
             query_filters["service"] = service
 
         def generator() -> Iterator[ChangeEvent]:
-            start_index = 1
-            requested = effective_page_size
+            page = 1
             while True:
-                params = self._build_query(query_filters, offset=start_index, page_size=requested)
+                params = self._build_query(query_filters, page=page, page_size=effective_page_size)
                 payload = self._fetch_page(params)
                 changes = list(self._transform_payload(payload))
                 yield from changes
+                if not changes:
+                    break
                 list_info = cast(dict[str, Any], payload.get("list_info", {}) or {})
-                returned = _coerce_int(list_info.get("row_count"))
-                if returned is None:
-                    returned = len(changes)
-                has_more: bool | None
+                response_row_count = _coerce_int(list_info.get("row_count"))
+                requested = (
+                    effective_page_size if response_row_count is None else response_row_count
+                )
                 has_more_raw = list_info.get("has_more_rows")
+                has_more: bool | None
                 if isinstance(has_more_raw, str):
                     has_more = has_more_raw.lower() == "true"
                 elif isinstance(has_more_raw, bool):
                     has_more = has_more_raw
                 else:
                     has_more = None
-                if not changes or returned < requested or has_more is False:
+                if len(changes) < requested or has_more is False:
                     break
-                start = _coerce_int(list_info.get("start_index"))
-                if start is None:
-                    start = start_index
-                start_index = start + max(returned, len(changes))
+                page += 1
 
         return generator()
 
     def _build_query(
-        self, filters: Mapping[str, object], *, offset: int, page_size: int
+        self, filters: Mapping[str, object], *, page: int, page_size: int
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {
-            "list_info": json.dumps({"row_count": page_size, "start_index": offset}),
+        start_index = max((page - 1) * page_size, 0)
+
+        list_info: dict[str, Any] = {
+            "row_count": page_size,
+            "start_index": start_index,
         }
+        filter_by: dict[str, Any] = {}
+        if "status" in filters:
+            filter_by["status"] = filters["status"]
+        if filter_by:
+            list_info["filter_by"] = filter_by
+
+        payload = {"list_info": list_info}
+        params: dict[str, Any] = {"input_data": json.dumps(payload)}
+
         start_time = filters.get("start_time")
         end_time = filters.get("end_time")
         if start_time is not None:
@@ -214,8 +230,6 @@ class ManageEngineClient(ChangeSource):
             parsed = _parse_datetime(end_time)
             if parsed is not None:
                 params["created_time_before"] = int(parsed.timestamp())
-        if "status" in filters:
-            params["status"] = filters["status"]
         if "requester" in filters:
             params["requester.name"] = filters["requester"]
         if "service" in filters:
@@ -227,12 +241,14 @@ class ManageEngineClient(ChangeSource):
         response = self._client.get("changes", params=params)
         response.raise_for_status()
         content_type = response.headers.get("Content-Type", "").lower()
-        if "html" in content_type:
+        text = response.text
+        html_without_json = "json" not in content_type and _looks_like_html_document(text)
+        if html_without_json or _looks_like_login_page(text):
             raise AuthError("Check authtoken or base URL")
         try:
             data = response.json()
-        except ValueError as exc:
-            if _looks_like_login_page(response.text):
+        except json.JSONDecodeError as exc:
+            if "json" not in content_type or _looks_like_html_document(text):
                 raise AuthError("Check authtoken or base URL") from exc
             raise
         if not isinstance(data, dict):  # pragma: no cover - defensive guard
