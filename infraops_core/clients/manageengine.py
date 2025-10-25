@@ -242,7 +242,8 @@ class ManageEngineClient(ChangeSource):
         response.raise_for_status()
         content_type = response.headers.get("Content-Type", "").lower()
         text = response.text
-        if ("json" not in content_type and _looks_like_html_document(text)) or _looks_like_login_page(text):
+        html_without_json = "json" not in content_type and _looks_like_html_document(text)
+        if html_without_json or _looks_like_login_page(text):
             raise AuthError("Check authtoken or base URL")
         try:
             data = response.json()
