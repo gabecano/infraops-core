@@ -56,7 +56,7 @@ See the ManageEngine v3 change API documentation for [on-premises deployments](h
 Export ManageEngine changes to JSONL that is safe for LLM ingestion:
 
 ```bash
-poetry run python -m infraops_core.cli.export_manageengine_llm export \
+poetry run export-manageengine-llm \
   --status implemented \
   --from 2024-05-01T00:00:00 \
   --to 2024-05-07T23:59:59 \

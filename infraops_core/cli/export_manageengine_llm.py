@@ -15,8 +15,6 @@ from infraops_core.io.jsonl import write_jsonl
 from infraops_core.llm_prep.redact import redact
 from infraops_core.models.change_event import ChangeEvent
 
-app = typer.Typer(help=__doc__ or "")
-
 
 def _parse_iso8601(value: str | None, *, argument: str) -> datetime | None:
     if value is None:
@@ -77,13 +75,11 @@ PageSizeOption = Annotated[
         min=1,
         help="Number of records to request per page from ManageEngine.",
         show_default=True,
-        default=100,
     ),
 ]
 
 
-@app.command("export")
-def export_manageengine_llm(
+def cli(
     *,
     status: StatusOption = None,
     from_: FromOption = None,
@@ -115,4 +111,14 @@ def export_manageengine_llm(
         write_jsonl(_iter_redacted_rows(events), out)
 
 
-__all__ = ["app", "export_manageengine_llm"]
+def main() -> None:
+    """Console script entry point for Typer."""
+
+    typer.run(cli)
+
+
+if __name__ == "__main__":
+    main()
+
+
+__all__ = ["cli", "main"]
