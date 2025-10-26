@@ -115,6 +115,45 @@ def test_list_changes_skips_null_approvals(capsys: pytest.CaptureFixture[str]) -
     assert "Skipping non-mapping ManageEngine approval entry" in captured.out
 
 
+def test_list_changes_handles_missing_approver_mapping() -> None:
+    base_url = "https://example.com"
+    payload = {
+        "list_info": {"row_count": 1, "has_more_rows": False, "start_index": 1},
+        "changes": [
+            {
+                "id": "3003",
+                "title": {"display_value": "Switch change"},
+                "description": {"display_value": "Updated firmware"},
+                "created_time": "2024-04-02T12:00:00",
+                "approvals": [
+                    {
+                        "approver": None,
+                        "status": {"display_value": "Approved"},
+                        "approval_time": {"display_value": "2024-04-02T12:15:00"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    def handler(_: Request) -> Response:
+        return Response(200, json=payload)
+
+    client = _build_mock_client(base_url, MockTransport(handler))
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token", client=client)
+
+    events = list(manageengine.list_changes())
+    manageengine.close()
+
+    assert len(events) == 1
+    event = events[0]
+    assert len(event.approvals) == 1
+    approval = event.approvals[0]
+    assert approval.approver == "unknown"
+    assert approval.status == "Approved"
+    assert approval.responded_at is not None
+
+
 def test_list_changes_applies_filters() -> None:
     base_url = "https://example.com"
     captured: list[Request] = []
