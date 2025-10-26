@@ -60,13 +60,25 @@ def _parse_datetime(value: Any) -> datetime | None:
     if value in (None, "", 0):
         return None
     if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(float(value))
+        epoch = float(value)
+        if epoch > 1e11:  # ManageEngine uses millisecond precision epochs
+            epoch /= 1000
+        return datetime.fromtimestamp(epoch)
     if isinstance(value, datetime):
         return value
     if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            numeric = float(stripped)
+        except ValueError:
+            pass
+        else:
+            return _parse_datetime(numeric)
         for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
             try:
-                return datetime.strptime(value, fmt)
+                return datetime.strptime(stripped, fmt)
             except ValueError:
                 continue
     raise ValueError(f"Unsupported datetime value: {value!r}")

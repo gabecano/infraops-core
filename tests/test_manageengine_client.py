@@ -11,6 +11,7 @@ from infraops_core.clients.manageengine import (
     AuthError,
     ManageEngineClient,
     _build_api_base,
+    _parse_datetime,
 )
 
 
@@ -203,3 +204,9 @@ def test_post_wraps_payload() -> None:
     assert "input_data" in decoded
     payload = json.loads(decoded["input_data"][0])
     assert payload == {"foo": "bar"}
+
+
+def test_parse_datetime_supports_millisecond_epochs() -> None:
+    expected = datetime.fromtimestamp(1512974940)
+    assert _parse_datetime("1512974940000") == expected
+    assert _parse_datetime(1512974940000) == expected
