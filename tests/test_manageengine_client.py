@@ -154,6 +154,47 @@ def test_list_changes_handles_missing_approver_mapping() -> None:
     assert approval.responded_at is not None
 
 
+def test_list_changes_logs_missing_nested_mappings(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    base_url = "https://example.com"
+    payload = {
+        "list_info": {"row_count": 1, "has_more_rows": False, "start_index": 1},
+        "changes": [
+            {
+                "id": "4004",
+                "title": {"display_value": "Router update"},
+                "description": {"display_value": "Applied patches"},
+                "created_time": "2024-04-02T12:00:00",
+                "service": None,
+                "requester": None,
+                "risk": "unexpected",
+                "risk_level": "Moderate",
+            }
+        ],
+    }
+
+    def handler(_: Request) -> Response:
+        return Response(200, json=payload)
+
+    client = _build_mock_client(base_url, MockTransport(handler))
+    manageengine = ManageEngineClient(base_url=base_url, api_key="token", client=client)
+
+    events = list(manageengine.list_changes())
+    manageengine.close()
+
+    assert len(events) == 1
+    event = events[0]
+    assert event.service == "unknown"
+    assert event.requester == "unknown"
+    assert event.risk == "Moderate"
+
+    captured = capsys.readouterr()
+    assert "ManageEngine change missing mapping field" in captured.out
+    assert "field=service" in captured.out
+    assert "ManageEngine change field is not a mapping" in captured.out
+
+
 def test_list_changes_applies_filters() -> None:
     base_url = "https://example.com"
     captured: list[Request] = []

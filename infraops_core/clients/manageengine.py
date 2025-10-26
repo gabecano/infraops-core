@@ -312,9 +312,35 @@ class ManageEngineClient(ChangeSource):
             try:
                 yield self._to_change_event(raw)
             except Exception as exc:  # pragma: no cover - defensive logging
-                _LOGGER.error("Failed to parse ManageEngine change", error=str(exc), raw=raw)
+                _LOGGER.error(
+                    "Failed to parse ManageEngine change",
+                    error=str(exc),
+                    change_id=raw.get("id"),
+                    raw=raw,
+                    exc_info=True,
+                )
 
     def _to_change_event(self, raw: dict[str, Any]) -> ChangeEvent:
+        def _mapping_for(field: str) -> Mapping[str, Any]:
+            value = raw.get(field)
+            if isinstance(value, Mapping):
+                return value
+            change_id = raw.get("id")
+            if value is None:
+                _LOGGER.info(
+                    "ManageEngine change missing mapping field",
+                    field=field,
+                    change_id=change_id,
+                )
+            else:
+                _LOGGER.warning(
+                    "ManageEngine change field is not a mapping",
+                    field=field,
+                    change_id=change_id,
+                    observed_type=type(value).__name__,
+                )
+            return {}
+
         approvals = []
         for item in raw.get("approvals", []) or []:
             if not isinstance(item, Mapping):
@@ -353,9 +379,9 @@ class ManageEngineClient(ChangeSource):
 
         raw_payload = cast(dict[str, Any], raw)
 
-        service_name = _unwrap_field(raw.get("service", {}).get("name", "unknown"))
-        requester_name = _unwrap_field(raw.get("requester", {}).get("name", "unknown"))
-        risk_value = _unwrap_field(raw.get("risk", {}).get("name"))
+        service_name = _unwrap_field(_mapping_for("service").get("name", "unknown"))
+        requester_name = _unwrap_field(_mapping_for("requester").get("name", "unknown"))
+        risk_value = _unwrap_field(_mapping_for("risk").get("name"))
         if risk_value is None and raw.get("risk_level") is not None:
             risk_value = raw.get("risk_level")
 
