@@ -317,6 +317,13 @@ class ManageEngineClient(ChangeSource):
     def _to_change_event(self, raw: dict[str, Any]) -> ChangeEvent:
         approvals = []
         for item in raw.get("approvals", []) or []:
+            if not isinstance(item, Mapping):
+                _LOGGER.warning(
+                    "Skipping non-mapping ManageEngine approval entry",
+                    approval=item,
+                    change_id=raw.get("id"),
+                )
+                continue
             approver = _unwrap_field(item.get("approver", {}).get("name", "unknown"))
             status = _unwrap_field(item.get("status", "unknown"))
             responded = _unwrap_field(item.get("responded_time") or item.get("approval_time"))
