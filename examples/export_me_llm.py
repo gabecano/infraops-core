@@ -14,7 +14,7 @@ from infraops_core.models.change_event import ChangeEvent
 
 
 def _redact_event(event: ChangeEvent) -> dict[str, object]:
-    payload = event.model_dump()
+    payload = event.model_dump(mode="json")
     payload["summary"] = redact(payload.get("summary", ""))
     payload["description"] = redact(payload.get("description", ""))
     return payload

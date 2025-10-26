@@ -27,7 +27,7 @@ def _parse_iso8601(value: str | None, *, argument: str) -> datetime | None:
 
 def _iter_redacted_rows(events: Iterable[ChangeEvent]) -> Iterator[dict[str, object]]:
     for event in events:
-        record = event.model_dump()
+        record = event.model_dump(mode="json")
         record["summary"] = redact(record.get("summary", ""))
         record["description"] = redact(record.get("description", ""))
         record["service"] = redact(record.get("service", ""))
