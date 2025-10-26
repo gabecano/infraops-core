@@ -324,7 +324,11 @@ class ManageEngineClient(ChangeSource):
                     change_id=raw.get("id"),
                 )
                 continue
-            approver = _unwrap_field(item.get("approver", {}).get("name", "unknown"))
+            approver_field = item.get("approver")
+            if isinstance(approver_field, Mapping):
+                if "name" in approver_field:
+                    approver_field = approver_field.get("name")
+            approver = _unwrap_field(approver_field if approver_field is not None else "unknown")
             status = _unwrap_field(item.get("status", "unknown"))
             responded = _unwrap_field(item.get("responded_time") or item.get("approval_time"))
             approvals.append(
